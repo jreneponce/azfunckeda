@@ -1,0 +1,178 @@
+data:
+  FUNCTIONS_WORKER_RUNTIME: bm9kZQ==
+  AzureWebJobsStorage: RGVmYXVsdEVuZHBvaW50c1Byb3RvY29sPWh0dHBzO0FjY291bnROYW1lPWF6ZnVuY2tlZGE7QWNjb3VudEtleT1PM2FydDRBMW5Ed1QyZVgvN1NMTGdGTnlHeE5ZREFqWUpmaUpNUGw0V2lJQWlwWk5KdGNTWEp1MHo2WFNOUWlNN2VuUTVaUUpEKytpTW1PR2d3ejJNUT09O0VuZHBvaW50U3VmZml4PWNvcmUud2luZG93cy5uZXQ=
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azfunckeda
+---
+data:
+  host.master: T1VWRG1TNFA3eDVsNzFtU2Y0dFZRYjFPTEVHd3BSbmdtaGpHdXdhYTRzcTlWL0RoaVlsYU1nPT0=
+  host.function.default: QXE0d2EzZ1V0SU1Ld0Z0clZMM01XWFlLS2FZdWd2TDNQeGpiQ0l2dEp4WU96TTJ3bFB5Y1BRPT0=
+  host.systemKey.default: aW0vQzBkR1ovd25LejhuMWFYSm9HQTNydkRMdHFaYXZzUTROSlgwZFlLVzdlalRZeHNqcm9RPT0=
+  functions.hello-world.default: SU16dkY3dm5yUnFjOWl6cktxMEpwUlREQW95SXZzV05zYWpPNGlPYTY4WWpheVZpZExaOHlnPT0=
+apiVersion: v1
+kind: Secret
+metadata:
+  name: func-keys-kube-secret-azfunckeda
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: azfunckeda-function-keys-identity-svc-act
+---
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  - configMaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: functions-keys-manager-role
+---
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: functions-keys-manager-role
+subjects:
+- kind: ServiceAccount
+  name: azfunckeda-function-keys-identity-svc-act
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: azfunckeda-function-keys-identity-svc-act-functions-keys-manager-rolebinding
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: azfunckeda-http
+spec:
+  selector:
+    app: azfunckeda-http
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azfunckeda-http
+  labels:
+    app: azfunckeda-http
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azfunckeda-http
+  template:
+    metadata:
+      labels:
+        app: azfunckeda-http
+    spec:
+      containers:
+      - name: azfunckeda-http
+        image: jreneponce/azfunckeda:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: AzureFunctionsJobHost__functions__0
+          value: hello-world
+        - name: AzureWebJobsSecretStorageType
+          value: kubernetes
+        - name: AzureWebJobsKubernetesSecretName
+          value: secrets/func-keys-kube-secret-azfunckeda
+        envFrom:
+        - secretRef:
+            name: azfunckeda
+        readinessProbe:
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 240
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTP
+        startupProbe:
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 240
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTP
+      serviceAccountName: azfunckeda-function-keys-identity-svc-act
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azfunckeda
+  labels:
+    app: azfunckeda
+spec:
+  selector:
+    matchLabels:
+      app: azfunckeda
+  template:
+    metadata:
+      labels:
+        app: azfunckeda
+    spec:
+      containers:
+      - name: azfunckeda
+        image: jreneponce/azfunckeda:latest
+        env:
+        - name: AzureFunctionsJobHost__functions__0
+          value: QueueTrigger
+        envFrom:
+        - secretRef:
+            name: azfunckeda
+        readinessProbe:
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 240
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTP
+        startupProbe:
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 240
+          httpGet:
+            path: /
+            port: 80
+            scheme: HTTP
+      serviceAccountName: azfunckeda-function-keys-identity-svc-act
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: azfunckeda
+  labels: {}
+spec:
+  scaleTargetRef:
+    name: azfunckeda
+  triggers:
+  - type: azure-queue
+    metadata:
+      direction: in
+      queueName: keda-queue-items
+      connectionFromEnv: AzureWebJobsStorage
+---
+
